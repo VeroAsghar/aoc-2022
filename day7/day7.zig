@@ -109,12 +109,6 @@ const FileTree = struct {
         return ft;
     }
 
-    pub fn totalSum1(ft: Self) usize {
-        var total: usize = 0;
-        total = calcSize(ft.head);
-        return total;
-    }
-
     pub fn printTree(n: *Node, depth: usize) void {
         var buf: [32]u8 = undefined;
         @memset(&buf, ' ');
@@ -133,16 +127,32 @@ const FileTree = struct {
         }
     }
 
-    pub fn calcSize(n: *Node) usize {
+    pub fn calculateSizes(n: *Node, list: *ArrayList(usize)) usize {
         switch (n.*) {
             .F => |payload| return payload.size,
             .D => |payload| {
+                var total: usize = 0;
                 for (payload.children.?) |*child| {
-                    var total: usize = 0;
-                    total += calcSize(child);
-                    return total;
+                    total += calculateSizes(child, list);
                 }
-                return 0;
+                list.append(total) catch unreachable;
+                return total;
+            },
+        }
+    }
+
+    pub fn totalSum1(n: *Node, list: *ArrayList(usize)) usize {
+        switch (n.*) {
+            .F => |payload| return payload.size,
+            .D => |payload| {
+                var total: usize = 0;
+                for (payload.children.?) |*child| {
+                    total += totalSum1(child, list);
+                }
+                if (total <= 100_000) {
+                    list.append(total) catch unreachable;
+                }
+                return total;
             },
         }
     }
@@ -184,8 +194,8 @@ const Parser = struct {
         };
 
         input: []const u8,
-        position: u8 = 0,
-        read_position: u8 = 0,
+        position: usize = 0,
+        read_position: usize = 0,
         ch: u8 = undefined,
 
         const Self = @This();
@@ -272,9 +282,36 @@ const Parser = struct {
     };
 };
 
-pub fn main() !void {}
+pub fn main() !void {
+    std.debug.print("   \n", .{});
+    const input_file = try fs.cwd().openFile("input.in", .{});
+    defer input_file.close();
 
-test "tokenize test" {
+    const input = try fs.File.readToEndAlloc(input_file, std.heap.page_allocator, try std.math.powi(usize, 2, 16));
+    defer std.heap.page_allocator.free(input);
+
+    var p = try Parser.init(input);
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const ft = try FileTree.createTree(allocator, &p);
+    //FileTree.printTree(ft.head, 0);
+    var list = ArrayList(usize).init(std.heap.page_allocator);
+    _ = FileTree.calculateSizes(ft.head, &list);
+    const total = 70_000_000;
+    const needed = 30_000_000;
+    const unused = total - list.getLast();
+
+    for (list.items) |item| {
+        if (item + unused > needed) {
+            std.debug.print("{d}\n", .{item});
+        }
+    }
+}
+
+test "test" {
     std.debug.print("   \n", .{});
     const input_file = try fs.cwd().openFile("test.in", .{});
     defer input_file.close();
@@ -290,5 +327,16 @@ test "tokenize test" {
 
     const ft = try FileTree.createTree(allocator, &p);
     FileTree.printTree(ft.head, 0);
-    try std.testing.expect(95437 == ft.totalSum1());
+    var list = ArrayList(usize).init(std.heap.page_allocator);
+    _ = FileTree.calculateSizes(ft.head, &list);
+    const total = 70_000_000;
+    const needed = 30_000_000;
+    const unused = total - list.getLast();
+
+    for (list.items) |item| {
+        if (item + unused > needed) {
+            std.debug.print("{d}\n", .{item});
+            break;
+        }
+    }
 }
